@@ -5,12 +5,13 @@ import (
 	"log"
 	"os"
 
+	"github.com/Andrei-666/moledrop/internal/p2p"
 	"github.com/Andrei-666/moledrop/internal/words"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 )
 
-func connectToSignalingServer(code string) {
+func connectToSignalingServer(code string, role string) {
 	serverURL := "ws://localhost:8080/ws"
 
 	//we connect to the signaling server
@@ -18,13 +19,28 @@ func connectToSignalingServer(code string) {
 	if err != nil {
 		log.Fatal("Can't connect to server")
 	}
-	defer conn.Close()
 
 	//we send the code to the server to join the room
 	err = conn.WriteMessage(websocket.TextMessage, []byte(code))
 	if err != nil {
 		log.Println("Write error:", err)
 		return
+	}
+
+	if role == "sender" {
+		//if we are the sender, we wait for the receiver to join the room and send us a "ready" signal before starting the file transfer
+		_, msg, err := conn.ReadMessage()
+		if err != nil || string(msg) != "ready" {
+			log.Println("Error waiting for receiver to join:", err)
+			return
+		}
+		fmt.Println("Receiver joined! Starting file transfer")
+		p2p.StartSender(conn)
+	} else if role == "receiver" {
+		//else if we are the receiver, we wait for the sender to create the room and then start the file transfer
+		fmt.Println("Connected, waiting for p2p connection to be established")
+
+		p2p.StartReceiver(conn)
 	}
 
 	//we wait for the other peer to join the room
@@ -60,7 +76,7 @@ func main() {
 			code := words.GenerateCode()
 			fmt.Printf("🦡 Mole is digging the tunnel for: %s\n", file)
 			fmt.Printf("Share this code with your friend to receive the file: %s\n", code)
-			connectToSignalingServer(code)
+			connectToSignalingServer(code, "sender")
 		},
 	}
 
@@ -72,7 +88,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			code := args[0]
 			fmt.Printf("🦡 Mole is searching for the tunnel with the code: %s\n", code)
-			connectToSignalingServer(code)
+			connectToSignalingServer(code, "receiver")
 		},
 	}
 

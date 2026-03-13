@@ -16,8 +16,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type Room struct {
+	Sender   *websocket.Conn
+	Receiver *websocket.Conn
+}
+
 // we use a map to store the connections for each room (code)
-var rooms = make(map[string]*websocket.Conn)
+var rooms = make(map[string]*Room)
 
 // we use a mutex to protect the rooms map from concurrent access
 var mutex sync.Mutex
@@ -40,35 +45,48 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	roomCode := string(msg)
 
 	//we verify if someone is already in the room, if not we create a new room
+
 	mutex.Lock()
-	//if the first user is already in the room, we add the second user to the room and connect them
-	if peer, exists := rooms[roomCode]; exists {
+	room, exists := rooms[roomCode]
+	if !exists {
+		//if the room doesn't exist, we create it assign Sender role to the current connection
 
-		fmt.Printf("Peer joined room: %s\n", roomCode)
-
-		//we tell both peers they are in the same room
-		peer.WriteMessage(websocket.TextMessage, []byte("ready"))
-		conn.WriteMessage(websocket.TextMessage, []byte("ready"))
-
-		//we delete the room and connect the two peers directly
-		delete(rooms, roomCode)
-
+		rooms[roomCode] = &Room{Sender: conn}
+		room = rooms[roomCode]
+		fmt.Printf("Sender created room: %s\n", roomCode)
 	} else {
-		//otherwise we create a new room and wait for the second user to join
-		rooms[roomCode] = conn
-		fmt.Printf("Room created, waiting for the second user: %s\n", roomCode)
+		//if the room exists, we assign Receiver role to the current connection and notify the sender that the tunnel is ready
+		room.Receiver = conn
+		fmt.Printf("Receiver joined room: %s\n", roomCode)
+
+		room.Sender.WriteMessage(websocket.TextMessage, []byte("ready"))
 	}
+
 	//we release the mutex lock
 	mutex.Unlock()
 
-	//we keep the connection open until the client closes it
+	//every message received from the client will be forwarded to the other peer in the room
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		msgType, payload, err := conn.ReadMessage()
+		if err != nil {
 			break
 		}
 
+		mutex.Lock()
+		if room.Sender == conn && room.Receiver != nil {
+			//if the sender sends a message and the receiver is connected, we forward the message to the receiver
+			room.Receiver.WriteMessage(msgType, payload)
+		} else if room.Receiver == conn && room.Sender != nil {
+			//if the receiver sends a message and the sender is connected, we forward the message to the sender
+			room.Sender.WriteMessage(msgType, payload)
+		}
+		mutex.Unlock()
 	}
-
+	//if the connection is closed, we clean up the room
+	mutex.Lock()
+	delete(rooms, roomCode)
+	mutex.Unlock()
+	fmt.Printf("Room closed: %s\n", roomCode)
 }
 
 func main() {
