@@ -1,4 +1,4 @@
-# 🦡 MoleDrop
+# MoleDrop
 
 > Ultra-fast, E2E encrypted P2P file transfer utility across CLI and Web.
 
