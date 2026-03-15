@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,9 +22,20 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type Peer struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (p *Peer) send(msgType int, data []byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.conn.WriteMessage(msgType, data)
+}
+
 type Room struct {
-	Sender   *websocket.Conn
-	Receiver *websocket.Conn
+	sender   *Peer
+	receiver *Peer
 }
 
 // we use a map to store the connections for each room (code)
@@ -56,15 +68,25 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		//if the room doesn't exist, we create it assign Sender role to the current connection
 
-		rooms[roomCode] = &Room{Sender: conn}
+		rooms[roomCode] = &Room{sender: &Peer{conn: conn}}
+		go func() {
+			time.Sleep(60 * time.Second)
+			mutex.Lock()
+			if r, ok := rooms[roomCode]; ok && r.receiver == nil {
+				delete(rooms, roomCode)
+				r.sender.conn.Close()
+				log.Printf("Room abandoned: %s", roomCode)
+			}
+			mutex.Unlock()
+		}()
 		room = rooms[roomCode]
 		fmt.Printf("Sender created room: %s\n", roomCode)
 	} else {
 		//if the room exists, we assign Receiver role to the current connection and notify the sender that the tunnel is ready
-		room.Receiver = conn
+		room.receiver = &Peer{conn: conn}
 		fmt.Printf("Receiver joined room: %s\n", roomCode)
 
-		room.Sender.WriteMessage(websocket.TextMessage, []byte("peer-joined"))
+		room.sender.send(websocket.TextMessage, []byte("peer-joined"))
 	}
 
 	//we release the mutex lock
@@ -78,12 +100,12 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		mutex.Lock()
-		if room.Sender == conn && room.Receiver != nil {
+		if room.sender.conn == conn && room.receiver != nil {
 			//if the sender sends a message and the receiver is connected, we forward the message to the receiver
-			room.Receiver.WriteMessage(msgType, payload)
-		} else if room.Receiver == conn && room.Sender != nil {
+			room.receiver.send(msgType, payload)
+		} else if room.receiver != nil && room.receiver.conn == conn && room.sender != nil {
 			//if the receiver sends a message and the sender is connected, we forward the message to the sender
-			room.Sender.WriteMessage(msgType, payload)
+			room.sender.send(msgType, payload)
 		}
 		mutex.Unlock()
 	}
@@ -98,7 +120,7 @@ func main() {
 	http.HandleFunc("/ws", wsHandler)
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // fallback for local development
+		port = "8080" // default port if not specified
 	}
 	fmt.Printf("Signaling server listening on :%s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
