@@ -12,12 +12,12 @@ import (
 )
 
 func connectToSignalingServer(code string, role string, filePath string) {
-	serverURL := "ws://localhost:8080/ws"
+	serverURL := "wss://moledrop-production.up.railway.app/ws"
 
 	//we connect to the signaling server
 	conn, _, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	if err != nil {
-		log.Fatal("Can't connect to server")
+		log.Fatal("Can't connect to server", err)
 	}
 
 	//we send the code to the server to join the room
@@ -28,18 +28,25 @@ func connectToSignalingServer(code string, role string, filePath string) {
 	}
 
 	if role == "sender" {
-		//if we are the sender, we wait for the receiver to join the room and send us a "peer-joined" signal before starting the file transfer
-		_, msg, err := conn.ReadMessage()
-		if err != nil || string(msg) != "peer-joined" {
-			log.Println("Error waiting for receiver to join:", err)
-			return
+		fmt.Println("Waiting for receiver to connect...")
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				log.Fatal("Lost connection to signaling server:", err)
+			}
+			switch string(msg) {
+			case "waiting":
+				// still waiting, loop again
+			case "peer-joined":
+				fmt.Println("Receiver connected! Starting transfer...")
+				p2p.StartSender(conn, filePath)
+				return
+			case "room-full":
+				log.Fatal("Room is full")
+			}
 		}
-		fmt.Println("Receiver joined! Starting file transfer")
-		p2p.StartSender(conn, filePath)
 	} else if role == "receiver" {
-		//else if we are the receiver, we wait for the sender to create the room and then start the file transfer
-		fmt.Println("Connected, waiting for p2p connection to be established")
-
+		fmt.Println("Connecting to sender...")
 		p2p.StartReceiver(conn)
 	}
 
