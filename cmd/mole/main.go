@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func connectToSignalingServer(code string, role string) {
+func connectToSignalingServer(code string, role string, filePath string) {
 	serverURL := "ws://localhost:8080/ws"
 
 	//we connect to the signaling server
@@ -28,14 +28,14 @@ func connectToSignalingServer(code string, role string) {
 	}
 
 	if role == "sender" {
-		//if we are the sender, we wait for the receiver to join the room and send us a "ready" signal before starting the file transfer
+		//if we are the sender, we wait for the receiver to join the room and send us a "peer-joined" signal before starting the file transfer
 		_, msg, err := conn.ReadMessage()
-		if err != nil || string(msg) != "ready" {
+		if err != nil || string(msg) != "peer-joined" {
 			log.Println("Error waiting for receiver to join:", err)
 			return
 		}
 		fmt.Println("Receiver joined! Starting file transfer")
-		p2p.StartSender(conn)
+		p2p.StartSender(conn, filePath)
 	} else if role == "receiver" {
 		//else if we are the receiver, we wait for the sender to create the room and then start the file transfer
 		fmt.Println("Connected, waiting for p2p connection to be established")
@@ -43,19 +43,6 @@ func connectToSignalingServer(code string, role string) {
 		p2p.StartReceiver(conn)
 	}
 
-	//we wait for the other peer to join the room
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		log.Println("Read error:", err)
-		return
-	}
-
-	//if we receive a "ready" signal, we can start the file transfer
-	if string(msg) == "ready" {
-		fmt.Println("Tunnel is ready! Starting file transfer")
-
-		//TODO: implement the file transfer logic here
-	}
 }
 
 func main() {
@@ -76,7 +63,7 @@ func main() {
 			code := words.GenerateCode()
 			fmt.Printf("🦡 Mole is digging the tunnel for: %s\n", file)
 			fmt.Printf("Share this code with your friend to receive the file: %s\n", code)
-			connectToSignalingServer(code, "sender")
+			connectToSignalingServer(code, "sender", file)
 		},
 	}
 
@@ -88,7 +75,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			code := args[0]
 			fmt.Printf("🦡 Mole is searching for the tunnel with the code: %s\n", code)
-			connectToSignalingServer(code, "receiver")
+			connectToSignalingServer(code, "receiver", "")
 		},
 	}
 
