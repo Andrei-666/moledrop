@@ -1,30 +1,79 @@
 # MoleDrop
+> Lightweight CLI tool for fast, encrypted, direct device-to-device file transfer.
 
-> Ultra-fast, E2E encrypted P2P file transfer utility across CLI and Web.
+MoleDrop was built to solve a simple problem: transferring files between two machines quickly, without uploading them to a third-party service. No accounts, no size limits, no cloud storage, just share a code and the transfer starts directly between devices.
 
-MoleDrop is a modern file transfer tool that allows you to send files directly from your terminal to any web browser (or another terminal) using WebRTC. No server storage, no relays, just direct RAM-to-RAM transfer.
+---
 
-## ✨ Features
-* **True P2P (WebRTC):** Direct connection between peers. The signaling server never touches your files.
-* **Cross-Platform:** Works seamlessly between Windows, macOS, Linux (CLI), and any modern Web Browser.
-* **End-to-End Encrypted:** Native DTLS/SRTP encryption.
-* **Frictionless UX:** Auto-generated human-readable room codes (e.g., `quantum-mole-8831`) and QR codes.
+## Install
 
-## 🏗️ Architecture
-* **CLI / Core:** Go + Pion (WebRTC)
-* **Signaling Server:** Go + WebSockets
-* **Web Client:** Vanilla JS + WebRTC Streams API
+**Linux / macOS**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Andrei-666/moledrop/main/install.sh | sudo bash
+```
 
-## 🚀 Getting Started (WIP)
-*Project is currently in active development. Build instructions will be added in v0.1.*
+**Windows** (PowerShell as Administrator)
+```powershell
+irm https://raw.githubusercontent.com/Andrei-666/moledrop/main/install.ps1 | iex
+```
 
-## 🗺️ Roadmap
-- [x] Initial project setup and architecture design
-- [ ] Implement secure word-generator for room codes
-- [ ] Build WebSocket signaling server
-- [ ] Implement CLI sender & receiver (Pion WebRTC)
-- [ ] Build Web Receiver (Vanilla JS)
-- [ ] Desktop GUI wrapping (Wails)
+---
 
-## 📄 License
-This project is licensed under the MIT License.
+## Usage
+
+**Send a file:**
+```bash
+mole send document.pdf
+```
+```
+Sending: document.pdf
+Share this code: crystal-mole-4821
+Waiting for receiver to connect...
+Receiver connected! Starting transfer...
+Sending [====================--------------------] 50.00% | 38.20 MB/s
+Done! Hash: 83f4cb...
+```
+
+**Receive a file:**
+```bash
+mole receive crystal-mole-4821
+```
+```
+Connecting with code: crystal-mole-4821
+Waiting for sender...
+Receiving: document.pdf (124.0 MB)
+Receiving [====================--------------------] 50.00% | 37.80 MB/s
+Saved! Hash: 83f4cb...
+```
+
+Folders are supported, they are automatically zipped before transfer and the zip is cleaned up afterwards.
+
+---
+
+## Architecture
+
+- **CLI:** Go + [Pion WebRTC v4](https://github.com/pion/webrtc)- single static binary, no runtime dependencies
+- **Signaling server:** Go + gorilla/websocket, deployed on Railway
+- **Transfer:** WebRTC DataChannel with DTLS encryption, back-pressure to keep memory usage constant
+- **Distribution:** GitHub Releases + one-line install scripts for Linux, macOS and Windows
+
+---
+
+## Roadmap
+
+- [x] Word generator for human-readable room codes
+- [x] WebSocket signaling server
+- [x] CLI sender & receiver
+- [x] Folder support (auto-zip)
+- [x] SHA-256 hash verification
+- [x] Deployed signaling server (Railway)
+- [x] Cross-platform releases via GitHub Actions
+- [x] One-line install scripts
+- [ ] Web client
+- [ ] Desktop GUI
+
+---
+
+## License
+
+MIT
